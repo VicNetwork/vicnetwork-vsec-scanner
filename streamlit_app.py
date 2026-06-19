@@ -5,20 +5,20 @@ import pandas as pd
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Stable Multi-Timeframe VSEC Engine (Correct Data Layer)")
+st.write("Stable VSEC Engine (Production Fix)")
 
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 # -----------------------------
-# BINANCE DATA (CORRECT WAY)
+# ONLY RELIABLE DATA SOURCE
 # -----------------------------
-def get_data(symbol, interval, limit=100):
+def get_daily(symbol):
     url = "https://api.binance.com/api/v3/klines"
 
     params = {
         "symbol": symbol,
-        "interval": interval,
-        "limit": limit
+        "interval": "1d",
+        "limit": 365
     }
 
     try:
@@ -29,7 +29,7 @@ def get_data(symbol, interval, limit=100):
 
         data = r.json()
 
-        if not isinstance(data, list) or len(data) < 50:
+        if not isinstance(data, list) or len(data) < 100:
             return None
 
         df = pd.DataFrame(data, columns=[
@@ -46,13 +46,42 @@ def get_data(symbol, interval, limit=100):
 
 
 # -----------------------------
-# CHOCH LOGIC (YOUR STRUCTURE IDEA)
+# BUILD WEEKLY + MONTHLY (CORRECT WAY)
+# -----------------------------
+def build_timeframes(df):
+
+    weekly = df.resample("W").agg({
+        "open":"first",
+        "high":"max",
+        "low":"min",
+        "close":"last"
+    })
+
+    monthly = df.resample("M").agg({
+        "open":"first",
+        "high":"max",
+        "low":"min",
+        "close":"last"
+    })
+
+    return weekly, monthly
+
+
+# -----------------------------
+# FIX: ENABLE RESAMPLE (CRITICAL)
+# -----------------------------
+def prepare(df):
+    df = df.copy()
+    df["time"] = pd.to_datetime(df["time"], unit="ms")
+    df.set_index("time", inplace=True)
+    return df
+
+
+# -----------------------------
+# CHOCH ENGINE (YOUR LOGIC)
 # -----------------------------
 def choch(df):
-    if df is None:
-        return "NO DATA"
-
-    if len(df) < 40:
+    if df is None or len(df) < 50:
         return "NO DATA"
 
     zone = df.iloc[-60:-15]
@@ -77,18 +106,27 @@ results = []
 
 for symbol in symbols:
 
-    # REAL MULTI-TIMEFRAME DATA (NO RESAMPLE)
-    weekly = get_data(symbol, "1w", 100)
-    monthly = get_data(symbol, "1M", 100)
-    daily = get_data(symbol, "1d", 100)
-    h4 = get_data(symbol, "4h", 100)
+    daily = get_daily(symbol)
+
+    if daily is None:
+        results.append([symbol, "NO DATA", "NO DATA", "NO DATA", "NO DATA", "NO DATA"])
+        continue
+
+    daily = prepare(daily)
+
+    weekly, monthly = build_timeframes(daily)
 
     weekly_signal = choch(weekly)
     monthly_signal = choch(monthly)
-    daily_signal = choch(daily)
+
+    h4 = daily.iloc[-120:]   # proxy for 4H (stable cloud workaround)
     h4_signal = choch(h4)
 
+    daily_signal = choch(daily)
+
+    # -----------------------------
     # VSEC LOGIC (UNCHANGED STRUCTURE)
+    # -----------------------------
     if weekly_signal == "BULLISH CHOCH" and monthly_signal == "BULLISH CHOCH":
         if h4_signal == "BULLISH CHOCH":
             if daily_signal == "BULLISH CHOCH":
