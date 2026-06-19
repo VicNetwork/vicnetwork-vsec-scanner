@@ -5,43 +5,39 @@ import pandas as pd
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Live Market Structure Scanner (Stable V1)")
+st.write("Multi-Timeframe VSEC Structure Engine")
+
+symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 # -----------------------------
-# WATCHLIST (expand later to 100+)
+# BINANCE DATA FETCH
 # -----------------------------
-symbols = [
-    "BTCUSDT",
-    "ETHUSDT",
-    "BNBUSDT"
-]
-
-# -----------------------------
-# FETCH BINANCE DATA
-# -----------------------------
-def get_data(symbol, interval="4h", limit=100):
+def get_data(symbol, interval):
     url = "https://api.binance.com/api/v3/klines"
 
     params = {
         "symbol": symbol,
         "interval": interval,
-        "limit": limit
+        "limit": 100
     }
 
     try:
-        response = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, timeout=10)
 
-        if response.status_code != 200:
+        if r.status_code != 200:
             return None
 
-        data = response.json()
+        data = r.json()
+
+        if not isinstance(data, list) or len(data) < 50:
+            return None
 
         df = pd.DataFrame(data, columns=[
-            "time", "open", "high", "low", "close", "volume",
-            "_1", "_2", "_3", "_4", "_5", "_6"
+            "time","open","high","low","close","volume",
+            "_1","_2","_3","_4","_5","_6"
         ])
 
-        df = df[["open", "high", "low", "close"]].astype(float)
+        df = df[["open","high","low","close"]].astype(float)
 
         return df
 
@@ -50,47 +46,98 @@ def get_data(symbol, interval="4h", limit=100):
 
 
 # -----------------------------
-# VSEC CHOCH LOGIC (IMPROVED STABLE VERSION)
+# STRUCTURE LOGIC (COMMON CORE)
 # -----------------------------
-def detect_choch(df):
-    if df is None or len(df) < 40:
+def structure(df):
+    if df is None:
+        return None, None, None
+
+    zone = df.iloc[-60:-15]
+
+    return (
+        zone["high"].max(),
+        zone["low"].min(),
+        df["close"].iloc[-1]
+    )
+
+
+# -----------------------------
+# CHOCH CHECK
+# -----------------------------
+def choch(df):
+    high, low, close = structure(df)
+
+    if high is None:
         return "NO DATA"
 
-    # Previous structure zone (exclude recent candles to avoid noise)
-    structure_window = df.iloc[-40:-10]
-
-    swing_high = structure_window["high"].max()
-    swing_low = structure_window["low"].min()
-
-    last_close = df["close"].iloc[-1]
-
-    # Break of structure logic
-    if last_close > swing_high:
+    if close > high:
         return "BULLISH CHOCH"
-    elif last_close < swing_low:
+    elif close < low:
         return "BEARISH CHOCH"
     else:
         return "NO CHOCH"
 
 
 # -----------------------------
-# SCANNER ENGINE
+# VSEC ENGINE
 # -----------------------------
 results = []
 
 for symbol in symbols:
-    df = get_data(symbol)
 
-    signal = detect_choch(df)
+    weekly = get_data(symbol, "1w")
+    monthly = get_data(symbol, "1M")
+    h4 = get_data(symbol, "4h")
+    daily = get_data(symbol, "1d")
 
-    results.append([symbol, signal])
+    weekly_signal = choch(weekly)
+    monthly_signal = choch(monthly)
+    h4_signal = choch(h4)
+    daily_signal = choch(daily)
+
+    # -------------------------
+    # VSEC LOGIC (YOUR FRAMEWORK)
+    # -------------------------
+
+    if weekly_signal == "BULLISH CHOCH" and monthly_signal == "BULLISH CHOCH":
+        if h4_signal == "BULLISH CHOCH":
+            if daily_signal == "BULLISH CHOCH":
+                status = "REVERSAL BUY READY"
+            else:
+                status = "WAIT DAILY CONFIRMATION"
+        else:
+            status = "WAIT 4H EXECUTION"
+    elif weekly_signal == "BEARISH CHOCH" and monthly_signal == "BEARISH CHOCH":
+        if h4_signal == "BEARISH CHOCH":
+            if daily_signal == "BEARISH CHOCH":
+                status = "REVERSAL SELL READY"
+            else:
+                status = "WAIT DAILY CONFIRMATION"
+        else:
+            status = "WAIT 4H EXECUTION"
+    else:
+        status = "NO STRUCTURE ALIGNMENT"
+
+    results.append([
+        symbol,
+        weekly_signal,
+        monthly_signal,
+        h4_signal,
+        daily_signal,
+        status
+    ])
 
 
 # -----------------------------
-# DISPLAY TABLE
+# DISPLAY
 # -----------------------------
-st.subheader("Market Structure Results")
+df_out = pd.DataFrame(results, columns=[
+    "PAIR",
+    "WEEKLY",
+    "MONTHLY",
+    "4H",
+    "DAILY",
+    "VSEC STATUS"
+])
 
-table = pd.DataFrame(results, columns=["PAIR", "VSEC SIGNAL"])
-
-st.dataframe(table, use_container_width=True)
+st.dataframe(df_out, use_container_width=True)
