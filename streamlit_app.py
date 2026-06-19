@@ -5,10 +5,10 @@ import pandas as pd
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Live Market Structure Scanner (Stable Version)")
+st.write("Live Market Structure Scanner (Stable V1)")
 
 # -----------------------------
-# WATCHLIST (start small, scale later)
+# WATCHLIST (expand later to 100+)
 # -----------------------------
 symbols = [
     "BTCUSDT",
@@ -17,7 +17,7 @@ symbols = [
 ]
 
 # -----------------------------
-# GET BINANCE DATA (SAFE VERSION)
+# FETCH BINANCE DATA
 # -----------------------------
 def get_data(symbol, interval="4h", limit=100):
     url = "https://api.binance.com/api/v3/klines"
@@ -50,19 +50,24 @@ def get_data(symbol, interval="4h", limit=100):
 
 
 # -----------------------------
-# SIMPLE CHOCH LOGIC (MVP)
+# VSEC CHOCH LOGIC (IMPROVED STABLE VERSION)
 # -----------------------------
 def detect_choch(df):
-    if df is None or len(df) < 20:
+    if df is None or len(df) < 40:
         return "NO DATA"
 
-    recent_high = df["high"].iloc[-20:].max()
-    recent_low = df["low"].iloc[-20:].min()
+    # Previous structure zone (exclude recent candles to avoid noise)
+    structure_window = df.iloc[-40:-10]
+
+    swing_high = structure_window["high"].max()
+    swing_low = structure_window["low"].min()
+
     last_close = df["close"].iloc[-1]
 
-    if last_close > recent_high:
+    # Break of structure logic
+    if last_close > swing_high:
         return "BULLISH CHOCH"
-    elif last_close < recent_low:
+    elif last_close < swing_low:
         return "BEARISH CHOCH"
     else:
         return "NO CHOCH"
@@ -82,7 +87,7 @@ for symbol in symbols:
 
 
 # -----------------------------
-# DISPLAY DASHBOARD
+# DISPLAY TABLE
 # -----------------------------
 st.subheader("Market Structure Results")
 
