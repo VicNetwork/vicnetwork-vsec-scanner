@@ -6,45 +6,49 @@ import time
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Stable Production VSEC Engine (Cloud Safe)")
+st.write("Stable VSEC Engine (Bybit Data Layer)")
 
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 # -----------------------------
-# SAFE REQUEST (CRITICAL FIX)
+# BYBIT DATA FETCH (STABLE)
 # -----------------------------
-def fetch(symbol, interval="1d", limit=200):
+def get_data(symbol, interval="60", limit=200):
+    """
+    Bybit v5 public kline endpoint
+    interval:
+    60 = 1H
+    240 = 4H
+    D = 1D
+    """
 
-    url = "https://api.binance.com/api/v3/klines"
-
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    url = "https://api.bybit.com/v5/market/kline"
 
     params = {
+        "category": "linear",
         "symbol": symbol,
         "interval": interval,
         "limit": limit
     }
 
     try:
-        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r = requests.get(url, params=params, timeout=10)
 
-        # HARD VALIDATION
         if r.status_code != 200:
             return None
 
         data = r.json()
 
-        if not isinstance(data, list):
+        if "result" not in data or "list" not in data["result"]:
             return None
 
-        if len(data) < 100:
+        klines = data["result"]["list"]
+
+        if len(klines) < 50:
             return None
 
-        df = pd.DataFrame(data, columns=[
-            "time","open","high","low","close","volume",
-            "_1","_2","_3","_4","_5","_6"
+        df = pd.DataFrame(klines, columns=[
+            "time","open","high","low","close","volume","turnover"
         ])
 
         df = df[["open","high","low","close"]].astype(float)
@@ -56,7 +60,7 @@ def fetch(symbol, interval="1d", limit=200):
 
 
 # -----------------------------
-# CHOCH ENGINE
+# CHOCH ENGINE (UNCHANGED LOGIC)
 # -----------------------------
 def choch(df):
     if df is None or len(df) < 50:
@@ -78,24 +82,49 @@ def choch(df):
 
 
 # -----------------------------
-# SCANNER (WITH DELAY SAFETY)
+# SCANNER ENGINE
 # -----------------------------
 results = []
 
 for symbol in symbols:
 
-    df = fetch(symbol)
+    # Bybit timeframes
+    h4 = get_data(symbol, "240")
+    h1 = get_data(symbol, "60")
+    d1 = get_data(symbol, "D")
 
-    signal = choch(df)
+    h4_signal = choch(h4)
+    h1_signal = choch(h1)
+    d1_signal = choch(d1)
 
-    results.append([symbol, signal])
+    # -----------------------------
+    # SIMPLE VSEC ALIGNMENT LOGIC
+    # -----------------------------
+    if d1_signal == "BULLISH CHOCH" and h4_signal == "BULLISH CHOCH":
+        status = "BULLISH STRUCTURE ALIGNMENT"
+    elif d1_signal == "BEARISH CHOCH" and h4_signal == "BEARISH CHOCH":
+        status = "BEARISH STRUCTURE ALIGNMENT"
+    elif h4_signal != "NO DATA":
+        status = "WAIT CONFIRMATION"
+    else:
+        status = "NO STRUCTURE DATA"
 
-    time.sleep(0.5)  # prevents rate blocking
+    results.append([
+        symbol,
+        d1_signal,
+        h4_signal,
+        h1_signal,
+        status
+    ])
+
+    time.sleep(0.2)
 
 
 # -----------------------------
 # OUTPUT
 # -----------------------------
-df_out = pd.DataFrame(results, columns=["PAIR", "VSEC SIGNAL"])
+df_out = pd.DataFrame(results, columns=[
+    "PAIR", "DAILY", "4H", "1H", "VSEC STATUS"
+])
 
 st.dataframe(df_out, use_container_width=True)
