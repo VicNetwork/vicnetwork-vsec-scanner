@@ -1,35 +1,45 @@
 import streamlit as st
 import requests
 import pandas as pd
+import time
 
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Stable VSEC Engine (Production Fix)")
+st.write("Stable Production VSEC Engine (Cloud Safe)")
 
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 # -----------------------------
-# ONLY RELIABLE DATA SOURCE
+# SAFE REQUEST (CRITICAL FIX)
 # -----------------------------
-def get_daily(symbol):
+def fetch(symbol, interval="1d", limit=200):
+
     url = "https://api.binance.com/api/v3/klines"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
     params = {
         "symbol": symbol,
-        "interval": "1d",
-        "limit": 365
+        "interval": interval,
+        "limit": limit
     }
 
     try:
-        r = requests.get(url, params=params, timeout=10)
+        r = requests.get(url, params=params, headers=headers, timeout=10)
 
+        # HARD VALIDATION
         if r.status_code != 200:
             return None
 
         data = r.json()
 
-        if not isinstance(data, list) or len(data) < 100:
+        if not isinstance(data, list):
+            return None
+
+        if len(data) < 100:
             return None
 
         df = pd.DataFrame(data, columns=[
@@ -46,45 +56,13 @@ def get_daily(symbol):
 
 
 # -----------------------------
-# BUILD WEEKLY + MONTHLY (CORRECT WAY)
-# -----------------------------
-def build_timeframes(df):
-
-    weekly = df.resample("W").agg({
-        "open":"first",
-        "high":"max",
-        "low":"min",
-        "close":"last"
-    })
-
-    monthly = df.resample("M").agg({
-        "open":"first",
-        "high":"max",
-        "low":"min",
-        "close":"last"
-    })
-
-    return weekly, monthly
-
-
-# -----------------------------
-# FIX: ENABLE RESAMPLE (CRITICAL)
-# -----------------------------
-def prepare(df):
-    df = df.copy()
-    df["time"] = pd.to_datetime(df["time"], unit="ms")
-    df.set_index("time", inplace=True)
-    return df
-
-
-# -----------------------------
-# CHOCH ENGINE (YOUR LOGIC)
+# CHOCH ENGINE
 # -----------------------------
 def choch(df):
     if df is None or len(df) < 50:
         return "NO DATA"
 
-    zone = df.iloc[-60:-15]
+    zone = df.iloc[-80:-20]
 
     swing_high = zone["high"].max()
     swing_low = zone["low"].min()
@@ -100,69 +78,24 @@ def choch(df):
 
 
 # -----------------------------
-# ENGINE
+# SCANNER (WITH DELAY SAFETY)
 # -----------------------------
 results = []
 
 for symbol in symbols:
 
-    daily = get_daily(symbol)
+    df = fetch(symbol)
 
-    if daily is None:
-        results.append([symbol, "NO DATA", "NO DATA", "NO DATA", "NO DATA", "NO DATA"])
-        continue
+    signal = choch(df)
 
-    daily = prepare(daily)
+    results.append([symbol, signal])
 
-    weekly, monthly = build_timeframes(daily)
-
-    weekly_signal = choch(weekly)
-    monthly_signal = choch(monthly)
-
-    h4 = daily.iloc[-120:]   # proxy for 4H (stable cloud workaround)
-    h4_signal = choch(h4)
-
-    daily_signal = choch(daily)
-
-    # -----------------------------
-    # VSEC LOGIC (UNCHANGED STRUCTURE)
-    # -----------------------------
-    if weekly_signal == "BULLISH CHOCH" and monthly_signal == "BULLISH CHOCH":
-        if h4_signal == "BULLISH CHOCH":
-            if daily_signal == "BULLISH CHOCH":
-                status = "REVERSAL BUY READY"
-            else:
-                status = "WAIT DAILY CONFIRMATION"
-        else:
-            status = "WAIT 4H EXECUTION"
-
-    elif weekly_signal == "BEARISH CHOCH" and monthly_signal == "BEARISH CHOCH":
-        if h4_signal == "BEARISH CHOCH":
-            if daily_signal == "BEARISH CHOCH":
-                status = "REVERSAL SELL READY"
-            else:
-                status = "WAIT DAILY CONFIRMATION"
-        else:
-            status = "WAIT 4H EXECUTION"
-
-    else:
-        status = "NO STRUCTURE ALIGNMENT"
-
-    results.append([
-        symbol,
-        weekly_signal,
-        monthly_signal,
-        h4_signal,
-        daily_signal,
-        status
-    ])
+    time.sleep(0.5)  # prevents rate blocking
 
 
 # -----------------------------
 # OUTPUT
 # -----------------------------
-df_out = pd.DataFrame(results, columns=[
-    "PAIR","WEEKLY","MONTHLY","4H","DAILY","VSEC STATUS"
-])
+df_out = pd.DataFrame(results, columns=["PAIR", "VSEC SIGNAL"])
 
 st.dataframe(df_out, use_container_width=True)
