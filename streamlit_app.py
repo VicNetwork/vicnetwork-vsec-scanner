@@ -1,130 +1,51 @@
 import streamlit as st
 import requests
 import pandas as pd
-import time
 
-st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
+st.set_page_config(page_title="VicNetwork VSEC Debug", layout="wide")
 
-st.title("📊 VicNetwork VSEC Scanner")
-st.write("Stable VSEC Engine (Bybit Data Layer)")
+st.title("📊 VSEC DEBUG MODE")
 
-symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
+symbol = "BTCUSDT"
 
 # -----------------------------
-# BYBIT DATA FETCH (STABLE)
+# RAW API TEST (BYBIT)
 # -----------------------------
-def get_data(symbol, interval="60", limit=200):
-    """
-    Bybit v5 public kline endpoint
-    interval:
-    60 = 1H
-    240 = 4H
-    D = 1D
-    """
-
+def test_api():
     url = "https://api.bybit.com/v5/market/kline"
 
     params = {
         "category": "linear",
         "symbol": symbol,
-        "interval": interval,
-        "limit": limit
+        "interval": "240",
+        "limit": 10
     }
 
     try:
         r = requests.get(url, params=params, timeout=10)
 
-        if r.status_code != 200:
+        st.write("STATUS CODE:", r.status_code)
+
+        try:
+            data = r.json()
+        except:
+            st.write("❌ JSON PARSE FAILED")
+            st.write(r.text)
             return None
 
-        data = r.json()
+        st.write("RAW RESPONSE:")
+        st.json(data)
 
-        if "result" not in data or "list" not in data["result"]:
-            return None
+        return data
 
-        klines = data["result"]["list"]
-
-        if len(klines) < 50:
-            return None
-
-        df = pd.DataFrame(klines, columns=[
-            "time","open","high","low","close","volume","turnover"
-        ])
-
-        df = df[["open","high","low","close"]].astype(float)
-
-        return df
-
-    except Exception:
+    except Exception as e:
+        st.write("❌ REQUEST FAILED:", str(e))
         return None
 
 
 # -----------------------------
-# CHOCH ENGINE (UNCHANGED LOGIC)
+# RUN TEST
 # -----------------------------
-def choch(df):
-    if df is None or len(df) < 50:
-        return "NO DATA"
+data = test_api()
 
-    zone = df.iloc[-80:-20]
-
-    swing_high = zone["high"].max()
-    swing_low = zone["low"].min()
-
-    close = df["close"].iloc[-1]
-
-    if close > swing_high:
-        return "BULLISH CHOCH"
-    elif close < swing_low:
-        return "BEARISH CHOCH"
-    else:
-        return "NO CHOCH"
-
-
-# -----------------------------
-# SCANNER ENGINE
-# -----------------------------
-results = []
-
-for symbol in symbols:
-
-    # Bybit timeframes
-    h4 = get_data(symbol, "240")
-    h1 = get_data(symbol, "60")
-    d1 = get_data(symbol, "D")
-
-    h4_signal = choch(h4)
-    h1_signal = choch(h1)
-    d1_signal = choch(d1)
-
-    # -----------------------------
-    # SIMPLE VSEC ALIGNMENT LOGIC
-    # -----------------------------
-    if d1_signal == "BULLISH CHOCH" and h4_signal == "BULLISH CHOCH":
-        status = "BULLISH STRUCTURE ALIGNMENT"
-    elif d1_signal == "BEARISH CHOCH" and h4_signal == "BEARISH CHOCH":
-        status = "BEARISH STRUCTURE ALIGNMENT"
-    elif h4_signal != "NO DATA":
-        status = "WAIT CONFIRMATION"
-    else:
-        status = "NO STRUCTURE DATA"
-
-    results.append([
-        symbol,
-        d1_signal,
-        h4_signal,
-        h1_signal,
-        status
-    ])
-
-    time.sleep(0.2)
-
-
-# -----------------------------
-# OUTPUT
-# -----------------------------
-df_out = pd.DataFrame(results, columns=[
-    "PAIR", "DAILY", "4H", "1H", "VSEC STATUS"
-])
-
-st.dataframe(df_out, use_container_width=True)
+st.write("DONE")
