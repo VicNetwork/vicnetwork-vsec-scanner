@@ -1,0 +1,1 @@
+print("VicNetwork VSEC Scanner")
