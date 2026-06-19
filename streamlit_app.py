@@ -5,20 +5,20 @@ import pandas as pd
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Correct Multi-Timeframe VSEC Engine (Fixed Data Layer)")
+st.write("Stable Multi-Timeframe VSEC Engine (Correct Data Layer)")
 
 symbols = ["BTCUSDT", "ETHUSDT", "BNBUSDT"]
 
 # -----------------------------
-# FETCH DAILY DATA ONLY
+# BINANCE DATA (CORRECT WAY)
 # -----------------------------
-def get_daily(symbol):
+def get_data(symbol, interval, limit=100):
     url = "https://api.binance.com/api/v3/klines"
 
     params = {
         "symbol": symbol,
-        "interval": "1d",
-        "limit": 365
+        "interval": interval,
+        "limit": limit
     }
 
     try:
@@ -28,6 +28,9 @@ def get_daily(symbol):
             return None
 
         data = r.json()
+
+        if not isinstance(data, list) or len(data) < 50:
+            return None
 
         df = pd.DataFrame(data, columns=[
             "time","open","high","low","close","volume",
@@ -43,32 +46,13 @@ def get_daily(symbol):
 
 
 # -----------------------------
-# RESAMPLE TO WEEKLY & MONTHLY (FIX)
-# -----------------------------
-def build_timeframes(df):
-
-    weekly = df.resample('W').agg({
-        'open':'first',
-        'high':'max',
-        'low':'min',
-        'close':'last'
-    })
-
-    monthly = df.resample('M').agg({
-        'open':'first',
-        'high':'max',
-        'low':'min',
-        'close':'last'
-    })
-
-    return weekly, monthly
-
-
-# -----------------------------
-# CHOCH LOGIC
+# CHOCH LOGIC (YOUR STRUCTURE IDEA)
 # -----------------------------
 def choch(df):
-    if df is None or len(df) < 30:
+    if df is None:
+        return "NO DATA"
+
+    if len(df) < 40:
         return "NO DATA"
 
     zone = df.iloc[-60:-15]
@@ -93,23 +77,18 @@ results = []
 
 for symbol in symbols:
 
-    daily = get_daily(symbol)
-
-    if daily is None:
-        results.append([symbol, "NO DATA", "NO DATA", "NO DATA", "NO DATA", "NO DATA"])
-        continue
-
-    weekly, monthly = build_timeframes(daily)
+    # REAL MULTI-TIMEFRAME DATA (NO RESAMPLE)
+    weekly = get_data(symbol, "1w", 100)
+    monthly = get_data(symbol, "1M", 100)
+    daily = get_data(symbol, "1d", 100)
+    h4 = get_data(symbol, "4h", 100)
 
     weekly_signal = choch(weekly)
     monthly_signal = choch(monthly)
     daily_signal = choch(daily)
-
-    # 4H approximation from daily (safe cloud workaround)
-    h4 = daily.copy().iloc[-120:]
     h4_signal = choch(h4)
 
-    # VSEC logic
+    # VSEC LOGIC (UNCHANGED STRUCTURE)
     if weekly_signal == "BULLISH CHOCH" and monthly_signal == "BULLISH CHOCH":
         if h4_signal == "BULLISH CHOCH":
             if daily_signal == "BULLISH CHOCH":
@@ -118,6 +97,7 @@ for symbol in symbols:
                 status = "WAIT DAILY CONFIRMATION"
         else:
             status = "WAIT 4H EXECUTION"
+
     elif weekly_signal == "BEARISH CHOCH" and monthly_signal == "BEARISH CHOCH":
         if h4_signal == "BEARISH CHOCH":
             if daily_signal == "BEARISH CHOCH":
@@ -126,6 +106,7 @@ for symbol in symbols:
                 status = "WAIT DAILY CONFIRMATION"
         else:
             status = "WAIT 4H EXECUTION"
+
     else:
         status = "NO STRUCTURE ALIGNMENT"
 
