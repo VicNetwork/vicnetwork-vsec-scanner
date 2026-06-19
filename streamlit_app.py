@@ -1,73 +1,91 @@
 import streamlit as st
-import ccxt
+import requests
 import pandas as pd
 
 st.set_page_config(page_title="VicNetwork VSEC Scanner", layout="wide")
 
 st.title("📊 VicNetwork VSEC Scanner")
-st.write("Live Market Structure Scanner (CHOCH + BOS)")
+st.write("Live Market Structure Scanner (Stable Version)")
 
-# -------------------------
-# Exchange Setup
-# -------------------------
-exchange = ccxt.binance()
-
-# 100+ coins scan list (you can expand later)
+# -----------------------------
+# WATCHLIST (start small, scale later)
+# -----------------------------
 symbols = [
-    "BTC/USDT", "ETH/USDT", "BNB/USDT", "SOL/USDT",
-    "XRP/USDT", "ADA/USDT", "DOGE/USDT", "MATIC/USDT",
-    "AVAX/USDT", "DOT/USDT"
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT"
 ]
 
-timeframe = "4h"
+# -----------------------------
+# GET BINANCE DATA (SAFE VERSION)
+# -----------------------------
+def get_data(symbol, interval="4h", limit=100):
+    url = "https://api.binance.com/api/v3/klines"
 
-# -------------------------
-# Get candles
-# -------------------------
-def get_data(symbol):
-    ohlcv = exchange.fetch_ohlcv(symbol, timeframe, limit=100)
-    df = pd.DataFrame(ohlcv, columns=["time","open","high","low","close","volume"])
-    return df
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "limit": limit
+    }
 
-# -------------------------
-# Simple structure logic (MVP CHOCH/BOS)
-# -------------------------
-def detect_structure(df):
-    highs = df["high"]
-    lows = df["low"]
+    try:
+        response = requests.get(url, params=params, timeout=10)
 
-    recent_high = highs.iloc[-10:].max()
-    recent_low = lows.iloc[-10:].min()
+        if response.status_code != 200:
+            return None
 
+        data = response.json()
+
+        df = pd.DataFrame(data, columns=[
+            "time", "open", "high", "low", "close", "volume",
+            "_1", "_2", "_3", "_4", "_5", "_6"
+        ])
+
+        df = df[["open", "high", "low", "close"]].astype(float)
+
+        return df
+
+    except Exception:
+        return None
+
+
+# -----------------------------
+# SIMPLE CHOCH LOGIC (MVP)
+# -----------------------------
+def detect_choch(df):
+    if df is None or len(df) < 20:
+        return "NO DATA"
+
+    recent_high = df["high"].iloc[-20:].max()
+    recent_low = df["low"].iloc[-20:].min()
     last_close = df["close"].iloc[-1]
 
-    choch_bull = last_close > recent_high
-    choch_bear = last_close < recent_low
+    if last_close > recent_high:
+        return "BULLISH CHOCH"
+    elif last_close < recent_low:
+        return "BEARISH CHOCH"
+    else:
+        return "NO CHOCH"
 
-    return choch_bull, choch_bear
 
-# -------------------------
-# Scanner
-# -------------------------
+# -----------------------------
+# SCANNER ENGINE
+# -----------------------------
 results = []
 
 for symbol in symbols:
     df = get_data(symbol)
 
-    bull, bear = detect_structure(df)
+    signal = detect_choch(df)
 
-    if bull:
-        status = "BULLISH CHOCH"
-    elif bear:
-        status = "BEARISH CHOCH"
-    else:
-        status = "NO CHOCH"
+    results.append([symbol, signal])
 
-    results.append([symbol, status])
 
-# -------------------------
-# Display
-# -------------------------
+# -----------------------------
+# DISPLAY DASHBOARD
+# -----------------------------
+st.subheader("Market Structure Results")
+
 table = pd.DataFrame(results, columns=["PAIR", "VSEC SIGNAL"])
 
 st.dataframe(table, use_container_width=True)
